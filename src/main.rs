@@ -58,12 +58,15 @@ impl Database {
         self.users.values().find(|u|u.username == username)
     }
     // DATABASE SAVING
-    fn save_to_file(&self) -> std::io::result<()> {
-        let data = serde_json::to_string(&self)?;
-        let mut file = fs::File::create("database.json")?;
+
+    fn save_to_file(&self) -> std::io::Result<()> {
+        let data: String = serde_json::to_string(&self)?;
+        let mut file: fs::File = fs::File::create("database.json")?;
         file.write_all(data.as_bytes())?;
         Ok(())
     }
+
+
     fn load_from_file() -> std::io::Result<Self> {
         let file_content = fs::read_to_string("database.json")?;
         let db:Self = serde_json::from_str(&file_content)?;
@@ -84,7 +87,7 @@ async fn create_task(app_state:web::Data<AppState>, task: web::Json::<Task> ) ->
 
 
 #[actix_web::main]
-fn main() -> std::io::Result<()>{
+async fn main() -> std::io::Result<()>{
     let db = match Database::load_from_file() {
         Ok(db) =>db,
         Err(_)=> Database::new()
@@ -93,5 +96,26 @@ fn main() -> std::io::Result<()>{
     let data = web::Data::new(AppState {
         db: Mutex::new(db)
     });
+
+    HttpServer::new(move || {
+        App::new()
+          .wrap(
+              Cors::permissive()
+                .allowed_origin_fn(|origin, _req_head| {
+                    origin.as_bytes().starts_with(b"http://localhost") || origin == "null"
+                })
+                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
+                .allowed_headers(vec![header::AUTHORIZATION, header::ACCEPT])
+                .allowed_header(header::CONTENT_TYPE)
+                .supports_credentials()
+                .max_age(3600)
+          )
+          .app_data(data.clone())
+          .route("/task", web::post().to(create_task))
+    })
+      .bind("127.0.0.1:8080")?
+      .run()
+      .await.expect("error occurred while running Httpserver");
+
     Ok(())
 }
