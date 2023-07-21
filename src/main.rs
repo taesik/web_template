@@ -38,7 +38,7 @@ impl Database {
         self.tasks.insert(task.id,task);
     }
 
-    fn get(&mut self,id:&u64) ->Option<&Task> {
+    fn get(&mut self,id:&u64) -> Option<&Task> {
         self.tasks.get(id)
     }
     fn get_all(&mut self) -> Vec<&Task> {
@@ -78,10 +78,17 @@ struct AppState {
     db:Mutex<Database>
 }
 async fn create_task(app_state:web::Data<AppState>, task: web::Json::<Task> ) -> impl Responder {
-    let mut db = app_state.db.lock().unwrap();
+    let mut db : std::sync::MutexGuard<Database> = app_state.db.lock().unwrap();
     db.insert(task.into_inner());
     let _ = db.save_to_file();
     HttpResponse::Ok().finish()
+}
+async fn read_task(app_state:web::Data<AppState>, id: web::Path::<u64> ) -> impl Responder {
+    let mut db : std::sync::MutexGuard<Database> = app_state.db.lock().unwrap();
+    match db.get(&id.into_inner()) {
+        Some(task) => HttpResponse::Ok().json(task),
+        None => HttpResponse::NotFound().finish()
+    }
 }
 
 
@@ -112,6 +119,7 @@ async fn main() -> std::io::Result<()>{
           )
           .app_data(data.clone())
           .route("/task", web::post().to(create_task))
+          .route("/task/{id}", web::get().to(read_task))
     })
       .bind("127.0.0.1:8080")?
       .run()
